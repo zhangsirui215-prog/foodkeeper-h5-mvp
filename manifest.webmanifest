@@ -1,0 +1,9 @@
+{
+  "name": "AI食材管家",
+  "short_name": "食材管家",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5fbf7",
+  "theme_color": "#29a36a",
+  "icons": []
+}
