@@ -1,34 +1,120 @@
-# AI 食材管家 H5 MVP
+# 🌍 AI 食材管家 - 碳足迹厨房
 
-这是一个可直接部署到 GitHub Pages 的静态 H5 demo。
+> 一个智能食材管理与健康饮食助手 H5 应用，帮助减少食物浪费、守护家人健康。
+> 适合作为前端开发个人作品集展示。
 
-## 功能范围
+![PWA](https://img.shields.io/badge/PWA-✅-brightgreen)
+![ES Module](https://img.shields.io/badge/ES%20Module-✅-blue)
+![纯前端](https://img.shields.io/badge/纯前端-无需后端-orange)
 
-- 食材库存与临期提醒
-- 模拟 OCR 包装食品识别
-- iWatch / HealthKit 运动信息模拟同步
-- 运动后菜谱推荐
-- 饮食偏好筛选
-- 家庭成员与老人关怀
-- 老人冰箱健康监控
-- 买菜需求模拟与人工编辑
-- 餐食模拟 OCR 打卡
+## ✨ 项目亮点
 
-## GitHub Pages 部署
+| 亮点 | 说明 |
+|------|------|
+| 🌱 **碳足迹厨房** | 消耗临期食材时计算 CO₂ 节省量，用环保叙事提升应用意义 |
+| 📊 **数据可视化** | Canvas 绘制冰箱健康周报和五维雷达图，直观展示数据 |
+| 🏅 **成就徽章系统** | 游戏化激励机制，解锁环保成就徽章 |
+| 📱 **PWA 支持** | 可安装到手机桌面，支持离线访问 |
+| 🧩 **ES Module 架构** | 代码模块化拆分，清晰的项目结构和完整的 JSDoc 注释 |
 
-1. 在 GitHub 新建仓库，例如 `foodkeeper-h5-mvp`
-2. 上传本目录下的全部文件到仓库根目录
-3. 进入仓库 `Settings` -> `Pages`
-4. `Build and deployment` 选择 `Deploy from a branch`
-5. Branch 选择 `main`，Folder 选择 `/root`
-6. 保存后等待 GitHub Pages 部署完成
+## 📂 项目结构
 
-部署完成后访问：
-
-```text
-https://你的用户名.github.io/foodkeeper-h5-mvp/
+```
+├── index.html              # 入口 HTML
+├── manifest.webmanifest     # PWA 配置清单
+├── sw.js                    # Service Worker（离线缓存）
+├── health-demo.css          # 全局样式
+├── js/
+│   ├── app.js              # 入口文件：渲染调度、页面切换
+│   ├── state.js            # 共享可变状态
+│   ├── store.js            # 数据读写（localStorage）+ 导入导出
+│   ├── data/
+│   │   └── index.js        # 模拟数据（食材、菜谱、健康场景）
+│   ├── ingredients.js      # 食材管理 + 碳足迹计算
+│   ├── recipes.js          # 菜谱推荐与评分算法
+│   ├── health.js           # 健康数据与运动同步
+│   ├── family.js           # 家庭成员与老人关怀
+│   ├── charts.js           # Canvas 图表可视化
+│   ├── badges.js           # 成就徽章系统
+│   └── ui.js               # 渲染函数、事件绑定、Toast 提示
+├── icons/
+│   ├── icon-192.svg        # PWA 图标 192×192
+│   └── icon-512.svg        # PWA 图标 512×512
+├── health-demo.js          # 【备份】原始单文件版本
+└── README.md               # 本文件
 ```
 
-## 注意
+## 🚀 本地运行
 
-当前版本是纯前端静态 demo，数据保存在浏览器 localStorage 中。
+本项目是纯静态前端应用，**无需任何构建工具或后端服务**：
+
+1. 克隆或下载本项目到本地
+2. 直接用浏览器打开 `index.html` 文件
+3. 或者使用任何静态服务器（推荐）：
+
+```bash
+# 使用 Python（如果已安装）
+python -m http.server 8000
+# 然后访问 http://localhost:8000
+
+# 使用 Node.js（如果已安装）
+npx serve .
+# 然后访问 http://localhost:3000
+```
+
+### 部署到 GitHub Pages
+
+1. 在 GitHub 新建仓库
+2. 上传本目录全部文件到仓库根目录
+3. 进入仓库 `Settings` → `Pages`
+4. `Build and deployment` 选择 `Deploy from a branch`
+5. Branch 选择 `main`，Folder 选择 `/root`
+6. 保存后等待部署完成
+
+## 🧩 功能模块
+
+| 模块 | 功能 | 页面 |
+|------|------|------|
+| **碳足迹厨房** | 计算食材消耗的 CO₂ 节省量、里程碑进度、类比换算 | 首页 |
+| **食材库存** | 查看食材清单、临期/过期提醒、浪费预测、生命周期 | 食材库 |
+| **冰箱健康周报** | Canvas 图表展示消耗趋势和五维雷达评分 | 食材库 |
+| **菜谱推荐** | 基于运动数据和库存的智能菜谱推荐、饮食偏好筛选 | 菜谱 |
+| **健康同步** | 模拟 iWatch/HealthKit 运动数据同步 | 我的 |
+| **家庭成员** | 管理家庭成员画像、老人关怀信息 | 关怀 |
+| **老人关怀** | 冰箱健康监控、餐食打卡、买菜需求 | 关怀 |
+| **成就徽章** | 解锁环保成就徽章，游戏化激励 | 首页 |
+| **数据管理** | 一键导出/导入 localStorage 数据备份 | 设置 |
+| **PWA 离线** | 添加到主屏幕，离线访问已缓存页面 | 全局 |
+
+## 🛠️ 技术栈
+
+| 技术 | 用途 |
+|------|------|
+| **原生 JavaScript (ES Module)** | 应用逻辑，模块化架构 |
+| **HTML5 + CSS3** | 页面结构与样式 |
+| **Canvas API** | 数据可视化图表 |
+| **localStorage** | 客户端数据持久化 |
+| **PWA (Service Worker + Manifest)** | 离线支持与主屏幕安装 |
+| **CSS 动画** | Toast 提示、徽章解锁动画 |
+| **JSDoc** | 代码注释与文档 |
+
+## 📝 代码规范
+
+- 所有函数均添加了 JSDoc 注释（`@param`、`@returns`）
+- 函数命名统一采用 camelCase 风格
+- 魔数提取为有意义的常量
+- ES Module 标准 `import/export`
+
+## 💡 设计理念
+
+本项目将**食材管理**与**环保理念**相结合，通过碳足迹可视化和成就系统，让用户在管理冰箱的同时感受到对环境的积极贡献。适合作为前端作品集展示以下能力：
+
+- 纯前端模块化架构设计
+- PWA 离线应用开发
+- Canvas 数据可视化
+- 完整的代码注释与文档
+- 良好的用户体验设计
+
+## 📄 许可证
+
+MIT License
