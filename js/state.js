@@ -10,7 +10,19 @@ const state = {
   /** @type {string|null} 正在编辑的家庭成员 ID */
   editingMemberId: null,
   /** @type {number|null} 正在编辑的买菜需求索引 */
-  editingGroceryIndex: null
+  editingGroceryIndex: null,
+  /** @type {string|null} 正在编辑的食材 id */
+  editingIngredientId: null,
+  /** @type {string} 食材库筛选状态 */
+  libraryFilter: '全部',
+  /** @type {string} 食材库类别筛选 */
+  libraryCategory: '',
+  /** @type {string} 食材库搜索关键字 */
+  libraryKeyword: '',
+  /** @type {boolean} 是否显示食材详情模态 */
+  showIngredientModal: false,
+  /** @type {string|null} 模态中显示的食材 id */
+  modalIngredientId: null
 };
 
 export { state };
