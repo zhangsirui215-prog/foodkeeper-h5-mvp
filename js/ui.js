@@ -1,6 +1,23 @@
-import { healthScenarios, preferenceFilters, substitutions } from './data/index.js';
+import { healthScenarios, preferenceFilters, substitutions, CATEGORIES, UNIT_OPTIONS } from './data/index.js';
 import { store, readJson, writeJson, exportData, importData } from './store.js';
-import { expiringItems, ingredients, availableNames, fridgeHealthIndex, wastePredictions, lifecycleSteps, statusClass, getCarbonData, getCarbonMilestone, getCarbonAnalogy } from './ingredients.js';
+import {
+  expiringItems,
+  ingredients,
+  availableNames,
+  fridgeHealthIndex,
+  wastePredictions,
+  lifecycleSteps,
+  statusClass,
+  getCarbonData,
+  getCarbonMilestone,
+  getCarbonAnalogy,
+  addIngredient,
+  updateIngredient,
+  deleteIngredient,
+  markConsumed,
+  searchIngredients,
+  getIngredientById
+} from './ingredients.js';
 import { getUnlockedBadges, getBadgeDefs, checkBadges, clearNewBadgeNotifications } from './badges.js';
 import { smartShoppingTips, workoutRecipes, filteredRecipes, elderRecipes, recoveryScore, missingFor } from './recipes.js';
 import { health, settings, recipeFilter, setRecipeFilter, syncHealth } from './health.js';
@@ -48,13 +65,14 @@ function tab(key, label) {
 
 /**
  * 渲染食材卡片
- * @param {{name: string, category: string, qty: number, unit: string, status: string, days: number}} item 食材对象
+ * @param {{id?: string, name: string, category: string, qty: number, unit: string, status: string, days: number}} item 食材对象
  * @returns {string} HTML 字符串
  */
 function renderIngredient(item) {
   const emoji = item.category === '水果' ? '🍌' : item.category === '蔬菜' ? '🥬' : item.category === '肉类' ? '🥩' : item.category === '蛋奶' ? '🥛' : '🍽️';
+  const id = item.id || '';
   return `
-    <article class="ingredient-card card">
+    <article class="ingredient-card card" data-open-ingredient="${id}" role="button" tabindex="0">
       <div class="food-avatar">${emoji}</div>
       <div>
         <div class="ingredient-title">
@@ -65,6 +83,117 @@ function renderIngredient(item) {
         <div class="lifecycle">${lifecycleSteps(item)}</div>
       </div>
     </article>
+  `;
+}
+
+/**
+ * 渲染食材表单（添加/编辑复用）
+ * @param {object} [item] - 编辑时传入现有食材
+ * @returns {string} HTML 字符串
+ */
+function renderIngredientForm(item) {
+  const today = new Date().toISOString().split('T')[0];
+  const data = item || {
+    name: '',
+    category: '蔬菜',
+    qty: 1,
+    unit: '个',
+    shelfLife: 7,
+    purchaseDate: today
+  };
+  const isEdit = !!item;
+  return `
+    <form class="ingredient-form" data-form="ingredient">
+      <label>
+        <span>食材名称 *</span>
+        <input type="text" name="name" value="${data.name || ''}" placeholder="如：西红柿" required>
+      </label>
+      <label>
+        <span>类别 *</span>
+        <select name="category" required>
+          ${CATEGORIES.map((c) => `<option value="${c}" ${data.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+        </select>
+      </label>
+      <div class="form-row">
+        <label>
+          <span>数量 *</span>
+          <input type="number" name="qty" min="0.1" step="0.1" value="${data.qty}" required>
+        </label>
+        <label>
+          <span>单位 *</span>
+          <select name="unit" required>
+            ${UNIT_OPTIONS.map((u) => `<option value="${u}" ${data.unit === u ? 'selected' : ''}>${u}</option>`).join('')}
+          </select>
+        </label>
+      </div>
+      <div class="form-row">
+        <label>
+          <span>保质期(天) *</span>
+          <input type="number" name="shelfLife" min="1" step="1" value="${data.shelfLife}" required>
+        </label>
+        <label>
+          <span>购入日期 *</span>
+          <input type="date" name="purchaseDate" value="${data.purchaseDate}" max="${today}" required>
+        </label>
+      </div>
+      <div class="form-actions">
+        <button type="button" class="secondary" data-action="close-modal">取消</button>
+        <button type="submit" class="primary" data-action="save-ingredient" data-id="${data.id || ''}">${isEdit ? '保存修改' : '添加食材'}</button>
+      </div>
+    </form>
+  `;
+}
+
+/**
+ * 渲染食材详情面板
+ * @param {object} item 食材对象
+ * @returns {string} HTML 字符串
+ */
+function renderIngredientDetail(item) {
+  return `
+    <div class="ingredient-detail" data-detail-id="${item.id}">
+      <div class="detail-row"><span class="muted">名称</span><strong>${item.name}</strong></div>
+      <div class="detail-row"><span class="muted">类别</span><strong>${item.category}</strong></div>
+      <div class="detail-row"><span class="muted">数量</span><strong>${item.qty}${item.unit}</strong></div>
+      <div class="detail-row"><span class="muted">状态</span><span class="badge ${statusClass(item.status)}">${item.status}</span></div>
+      <div class="detail-row"><span class="muted">剩余天数</span><strong>${item.days} 天</strong></div>
+      <div class="detail-row"><span class="muted">保质期</span><strong>${item.shelfLife || '-'} 天</strong></div>
+      <div class="detail-row"><span class="muted">购入日期</span><strong>${item.purchaseDate || '-'}</strong></div>
+      <div class="detail-row"><span class="muted">浪费风险</span><strong>${item.wasteRisk}%</strong></div>
+      <div class="lifecycle">${lifecycleSteps(item)}</div>
+      <div class="form-actions">
+        <button type="button" class="secondary" data-action="edit-ingredient" data-id="${item.id}">编辑</button>
+        <button type="button" class="secondary" data-action="consume-ingredient" data-id="${item.id}">标记为已消耗</button>
+        <button type="button" class="danger" data-action="delete-ingredient" data-id="${item.id}">删除</button>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * 渲染食材库筛选条
+ * @param {{status: string, category: string}} filter 当前筛选
+ * @returns {string} HTML 字符串
+ */
+function renderLibraryFilters(filter) {
+  const statuses = [
+    { key: '', label: '全部' },
+    { key: '新鲜', label: '新鲜' },
+    { key: '临期', label: '临期' },
+    { key: '今日到期', label: '今日到期' },
+    { key: '已过期', label: '已过期' }
+  ];
+  return `
+    <div class="library-toolbar">
+      <input type="search" class="library-search" data-input="library-search" placeholder="搜索食材名称..." value="${filter.keyword || ''}">
+      <div class="filter-chips">
+        ${statuses.map((s) => `<button class="chip ${filter.status === s.key ? 'active' : ''}" data-action="filter-status" data-value="${s.key}">${s.label}</button>`).join('')}
+      </div>
+      <select class="filter-select" data-action="filter-category">
+        <option value="">全部分类</option>
+        ${CATEGORIES.map((c) => `<option value="${c}" ${filter.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+      </select>
+    </div>
   `;
 }
 
@@ -273,6 +402,8 @@ function renderRecipes() {
  */
 function renderLibrary() {
   const waste = wastePredictions();
+  const filter = { status: state.libraryStatus || '', category: state.libraryCategory || '', keyword: state.libraryKeyword || '' };
+  const list = searchIngredients(filter);
   return `
     <main class="page">
       <div class="page-header">
@@ -280,13 +411,15 @@ function renderLibrary() {
           <p class="eyebrow">库存</p>
           <h1>我的食材库</h1>
         </div>
+        <button class="primary" data-action="add-ingredient">+ 添加食材</button>
       </div>
+      ${renderLibraryFilters(filter)}
       <section class="card card-section">
         <div class="section-title">
           <h2>食材浪费预测</h2>
           <span class="muted">基于历史消耗模拟</span>
         </div>
-        ${waste.map((item) => `<p class="waste-line">${item.name} 浪费风险 ${item.wasteRisk}%：建议下次少买或提前安排菜谱。</p>`).join('')}
+        ${waste.length ? waste.map((item) => `<p class="waste-line">${item.name} 浪费风险 ${item.wasteRisk}%：建议下次少买或提前安排菜谱。</p>`).join('') : '<p class="empty-hint">暂无高浪费风险食材 🎉</p>'}
       </section>
       <section class="card card-section">
         <div class="section-title">
@@ -303,7 +436,7 @@ function renderLibrary() {
         <canvas class="chart-canvas" id="fridge-radar" width="300" height="240"></canvas>
       </section>
       <section class="stack">
-        ${ingredients().map(renderIngredient).join('')}
+        ${list.length ? list.map(renderIngredient).join('') : '<div class="empty-hint">未找到匹配的食材，试试调整筛选或添加新食材</div>'}
       </section>
     </main>
   `;
@@ -598,6 +731,39 @@ function render() {
 }
 
 /**
+ * 打开模态对话框
+ * @param {string} title - 标题
+ * @param {string} bodyHtml - 主体内容
+ */
+function openModal(title, bodyHtml) {
+  closeModal();
+  const wrap = document.createElement('div');
+  wrap.id = 'modal-mask';
+  wrap.className = 'modal-mask';
+  wrap.innerHTML = `
+    <div class="modal" role="dialog" aria-modal="true" aria-label="${title}">
+      <div class="modal-header">
+        <strong>${title}</strong>
+        <button class="icon-button" data-action="close-modal" aria-label="关闭">×</button>
+      </div>
+      <div class="modal-body">${bodyHtml}</div>
+    </div>
+  `;
+  document.body.appendChild(wrap);
+  // 点击遮罩关闭
+  wrap.addEventListener('click', (event) => {
+    if (event.target === wrap) closeModal();
+  });
+}
+
+/**
+ * 关闭模态对话框
+ */
+function closeModal() {
+  document.getElementById('modal-mask')?.remove();
+}
+
+/**
  * 事件绑定
  */
 function bindEvents() {
@@ -640,6 +806,63 @@ function bindEvents() {
       writeJson(store.settings, { ...settings(), [input.dataset.setting]: input.checked });
     });
   });
+
+  // ========== 食材库：添加/编辑/详情/消耗/删除/筛选/搜索 ==========
+  document.querySelector('[data-action="add-ingredient"]')?.addEventListener('click', () => {
+    openModal('添加食材', renderIngredientForm());
+    bindModalEvents();
+  });
+
+  document.querySelectorAll('[data-open-ingredient]').forEach((card) => {
+    card.addEventListener('click', () => {
+      const id = card.dataset.openIngredient;
+      const item = getIngredientById(id);
+      if (!item) {
+        // 兼容无 id 的种子数据：按名称匹配
+        const name = card.querySelector('h3')?.textContent;
+        const fallback = ingredients().find((it) => it.name === name);
+        if (fallback) {
+          openModal('食材详情', renderIngredientDetail(fallback));
+        } else {
+          showToast('食材数据已失效，请刷新页面', 'warning');
+        }
+        return;
+      }
+      openModal('食材详情', renderIngredientDetail(item));
+      bindModalEvents();
+    });
+    card.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        card.click();
+      }
+    });
+  });
+
+  document.querySelectorAll('[data-action="filter-status"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      state.libraryStatus = btn.dataset.value || '';
+      render();
+    });
+  });
+  document.querySelector('[data-action="filter-category"]')?.addEventListener('change', (event) => {
+    state.libraryCategory = event.target.value || '';
+    render();
+  });
+  const searchInput = document.querySelector('[data-input="library-search"]');
+  if (searchInput) {
+    let timer = null;
+    searchInput.addEventListener('input', (event) => {
+      clearTimeout(timer);
+      const value = event.target.value || '';
+      timer = setTimeout(() => {
+        state.libraryKeyword = value;
+        render();
+      }, 200);
+    });
+  }
+  // ========== 食材库操作结束 ==========
+
   document.querySelector('[data-action="add-member"]')?.addEventListener('click', () => {
     const name = document.querySelector('[data-member-field="name"]')?.value.trim() || '新成员';
     const age = Number(document.querySelector('[data-member-field="age"]')?.value || 0);
@@ -759,6 +982,97 @@ function bindEvents() {
     // 重置 input 以允许重复选择同一文件
     event.target.value = '';
   });
+}
+
+/**
+ * 绑定模态对话框内的事件（食材详情/表单）
+ */
+function bindModalEvents() {
+  // 关闭按钮
+  document.querySelectorAll('[data-action="close-modal"]').forEach((btn) => {
+    btn.addEventListener('click', () => closeModal());
+  });
+  // 食材详情内"编辑"按钮
+  document.querySelectorAll('[data-action="edit-ingredient"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const item = getIngredientById(btn.dataset.id);
+      if (!item) {
+        showToast('食材不存在', 'error');
+        closeModal();
+        return;
+      }
+      const body = document.querySelector('#modal-mask .modal-body');
+      if (body) {
+        body.innerHTML = renderIngredientForm(item);
+        // 重新绑定关闭按钮
+        body.querySelectorAll('[data-action="close-modal"]').forEach((c) => c.addEventListener('click', () => closeModal()));
+        // 表单提交由下方全局监听处理
+      }
+    });
+  });
+  // 食材消耗
+  document.querySelectorAll('[data-action="consume-ingredient"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const result = markConsumed(id);
+      if (result.ok) {
+        showToast(`已记录碳足迹节省 ${result.saved}g CO₂`, 'success');
+        closeModal();
+        render();
+      } else {
+        showToast(result.error?.msg || '操作失败', 'error');
+      }
+    });
+  });
+  // 食材删除
+  document.querySelectorAll('[data-action="delete-ingredient"]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const id = btn.dataset.id;
+      const item = getIngredientById(id);
+      if (!item) {
+        showToast('食材不存在', 'error');
+        closeModal();
+        return;
+      }
+      if (!confirm(`确定删除「${item.name}」吗？此操作不可撤销。`)) return;
+      deleteIngredient(id);
+      showToast('已删除', 'success');
+      closeModal();
+      render();
+    });
+  });
+  // 食材表单提交（添加/编辑）
+  const form = document.querySelector('[data-form="ingredient"]');
+  if (form) {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const fd = new FormData(form);
+      const payload = {
+        name: String(fd.get('name') || ''),
+        category: String(fd.get('category') || ''),
+        qty: fd.get('qty'),
+        unit: String(fd.get('unit') || ''),
+        shelfLife: fd.get('shelfLife'),
+        purchaseDate: String(fd.get('purchaseDate') || '')
+      };
+      const saveBtn = form.querySelector('[data-action="save-ingredient"]');
+      const id = saveBtn?.dataset.id;
+      const result = id ? updateIngredient(id, payload) : addIngredient(payload);
+      if (result.ok) {
+        showToast(id ? '修改已保存' : '食材已添加', 'success');
+        closeModal();
+        render();
+      } else {
+        const msg = result.error?.msg || '保存失败';
+        showToast(msg, 'error');
+        const field = result.error?.field;
+        if (field) {
+          const el = form.querySelector(`[name="${field}"]`);
+          el?.focus();
+        }
+      }
+    });
+  }
 }
 
 export { render };
