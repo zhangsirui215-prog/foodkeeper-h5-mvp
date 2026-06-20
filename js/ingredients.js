@@ -1,5 +1,32 @@
-import { store, ingredientsSeed, WASTE_RISK_HIGH } from './data/index.js';
+import { store, ingredientsSeed, WASTE_RISK_HIGH, CATEGORIES, UNIT_OPTIONS } from './data/index.js';
 import { readJson, writeJson } from './store.js';
+
+/**
+ * 计算剩余天数
+ * @param {string} purchaseDateStr 购入日期 YYYY-MM-DD
+ * @param {number} shelfLifeDays 保质期天数
+ * @returns {number} 剩余天数
+ */
+function calcRemainingDays(purchaseDateStr, shelfLifeDays) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const purchase = new Date(purchaseDateStr);
+  purchase.setHours(0, 0, 0, 0);
+  const diff = today - purchase;
+  return shelfLifeDays - Math.floor(diff / 86400000);
+}
+
+/**
+ * 根据剩余天数计算食材状态
+ * @param {number} remainingDays
+ * @returns {'新鲜'|'临期'|'今日到期'|'已过期'}
+ */
+function calcStatus(remainingDays) {
+  if (remainingDays < 0) return '已过期';
+  if (remainingDays === 0) return '今日到期';
+  if (remainingDays <= 3) return '临期';
+  return '新鲜';
+}
 
 /**
  * 食材类别碳足迹基准（g CO₂/份）
@@ -180,7 +207,128 @@ function getCarbonMilestone(totalSaved) {
   return { current, next, progress: Math.min(100, progress) };
 }
 
-export { ingredients, availableNames, expiringItems, expiredItems, fridgeHealthIndex, wastePredictions, lifecycleSteps, statusClass, getCarbonData, calcCarbonSaved, recordCarbonSaving, getCarbonAnalogy, getCarbonMilestone };
+/**
+ * 添加食材
+ * @param {{name: string, category: string, qty: number, unit: string, shelfLife: number, purchaseDate: string}} payload
+ * @returns {{ok: boolean, ingredient?: object, error?: string}}
+ */
+function addIngredient(payload) {
+  // 必填校验
+  if (!payload.name || !payload.name.trim()) return { ok: false, error: '请输入食材名称' };
+  if (!payload.category) return { ok: false, error: '请选择食材类别' };
+  if (!payload.qty || payload.qty <= 0) return { ok: false, error: '数量必须大于 0' };
+  if (!payload.shelfLife || payload.shelfLife <= 0) return { ok: false, error: '保质期天数必须大于 0' };
+  if (!payload.purchaseDate) return { ok: false, error: '请选择购入日期' };
+  
+  // 查重
+  const list = ingredients();
+  const name = payload.name.trim();
+  if (list.some(item => item.name.toLowerCase() === name.toLowerCase())) {
+    return { ok: false, error: `"${name}" 已在食材库中` };
+  }
+  
+  const days = calcRemainingDays(payload.purchaseDate, payload.shelfLife);
+  const ingredient = {
+    id: `ing_${Date.now()}`,
+    name,
+    category: payload.category,
+    qty: Number(payload.qty),
+    unit: payload.unit || '个',
+    status: calcStatus(days),
+    days,
+    wasteRisk: days <= 3 ? Math.max(25, Math.min(90, 70 - days * 15)) : Math.max(5, 60 - days * 3),
+    purchaseDate: payload.purchaseDate,
+    shelfLife: Number(payload.shelfLife)
+  };
+  
+  writeJson(store.ingredients, [ingredient, ...list]);
+  return { ok: true, ingredient };
+}
+
+/**
+ * 更新食材
+ * @param {string} id 食材 id
+ * @param {object} patch 要更新的字段
+ * @returns {{ok: boolean, ingredient?: object, error?: string}}
+ */
+function updateIngredient(id, patch) {
+  const list = ingredients();
+  const index = list.findIndex(item => item.id === id);
+  if (index === -1) return { ok: false, error: '食材不存在' };
+  
+  const updated = { ...list[index], ...patch };
+  // 如果有购入日期或保质期变化，重算状态
+  if (patch.purchaseDate || patch.shelfLife) {
+    const purchaseDate = patch.purchaseDate || updated.purchaseDate;
+    const shelfLife = patch.shelfLife || updated.shelfLife;
+    updated.days = calcRemainingDays(purchaseDate, shelfLife);
+    updated.status = calcStatus(updated.days);
+    updated.wasteRisk = updated.days <= 3 ? Math.max(25, Math.min(90, 70 - updated.days * 15)) : Math.max(5, 60 - updated.days * 3);
+  }
+  
+  list[index] = updated;
+  writeJson(store.ingredients, list);
+  return { ok: true, ingredient: updated };
+}
+
+/**
+ * 删除食材
+ * @param {string} id
+ * @returns {{ok: boolean}}
+ */
+function deleteIngredient(id) {
+  const list = ingredients().filter(item => item.id !== id);
+  writeJson(store.ingredients, list);
+  return { ok: true };
+}
+
+/**
+ * 通过 id 获取食材
+ * @param {string} id
+ * @returns {object|undefined}
+ */
+function getIngredientById(id) {
+  return ingredients().find(item => item.id === id);
+}
+
+/**
+ * 标记食材为已消耗（记录碳足迹后删除）
+ * @param {string} id
+ * @returns {{ok: boolean, saved?: number, error?: string}}
+ */
+function markConsumed(id) {
+  const ingredient = getIngredientById(id);
+  if (!ingredient) return { ok: false, error: '食材不存在' };
+  const saved = recordCarbonSaving(ingredient, `消耗${ingredient.name}`);
+  deleteIngredient(id);
+  return { ok: true, saved };
+}
+
+/**
+ * 搜索食材
+ * @param {{keyword?: string, status?: string, category?: string}} filters
+ * @returns {Array}
+ */
+function searchIngredients({ keyword, status, category } = {}) {
+  let list = ingredients();
+  if (keyword) {
+    const kw = keyword.toLowerCase();
+    list = list.filter(item => item.name.toLowerCase().includes(kw));
+  }
+  if (status && status !== '全部') {
+    if (status === '临期') {
+      list = list.filter(item => item.status === '临期' || item.status === '今日到期');
+    } else {
+      list = list.filter(item => item.status === status);
+    }
+  }
+  if (category) {
+    list = list.filter(item => item.category === category);
+  }
+  return list;
+}
+
+export { ingredients, availableNames, expiringItems, expiredItems, fridgeHealthIndex, wastePredictions, lifecycleSteps, statusClass, getCarbonData, calcCarbonSaved, recordCarbonSaving, getCarbonAnalogy, getCarbonMilestone, calcRemainingDays, calcStatus, addIngredient, updateIngredient, deleteIngredient, getIngredientById, markConsumed, searchIngredients };
 
 // 初始化碳足迹数据
 if (!localStorage.getItem(CARBON_STORAGE_KEY)) {

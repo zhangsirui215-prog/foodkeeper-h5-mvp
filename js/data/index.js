@@ -162,6 +162,11 @@ const store = {
 /** 浪费风险高阈值 */
 const WASTE_RISK_HIGH = 25;
 
+/** 食材类别选项 */
+const CATEGORIES = ['肉类', '蛋奶', '蔬菜', '水果', '其他'];
+/** 单位选项 */
+const UNIT_OPTIONS = ['个', 'g', 'kg', 'ml', 'L', '把', '盒', '袋'];
+
 export {
   ingredientsSeed,
   healthScenarios,
@@ -170,5 +175,7 @@ export {
   substitutions,
   familyProfiles,
   store,
-  WASTE_RISK_HIGH
+  WASTE_RISK_HIGH,
+  CATEGORIES,
+  UNIT_OPTIONS
 };

@@ -1,6 +1,6 @@
-import { healthScenarios, preferenceFilters, substitutions } from './data/index.js';
+import { healthScenarios, preferenceFilters, substitutions, CATEGORIES, UNIT_OPTIONS } from './data/index.js';
 import { store, readJson, writeJson, exportData, importData } from './store.js';
-import { expiringItems, ingredients, availableNames, fridgeHealthIndex, wastePredictions, lifecycleSteps, statusClass, getCarbonData, getCarbonMilestone, getCarbonAnalogy } from './ingredients.js';
+import { expiringItems, ingredients, availableNames, fridgeHealthIndex, wastePredictions, lifecycleSteps, statusClass, getCarbonData, getCarbonMilestone, getCarbonAnalogy, calcStatus, calcRemainingDays, addIngredient, updateIngredient, deleteIngredient, getIngredientById, markConsumed, searchIngredients } from './ingredients.js';
 import { getUnlockedBadges, getBadgeDefs, checkBadges, clearNewBadgeNotifications } from './badges.js';
 import { smartShoppingTips, workoutRecipes, filteredRecipes, elderRecipes, recoveryScore, missingFor } from './recipes.js';
 import { health, settings, recipeFilter, setRecipeFilter, syncHealth } from './health.js';
@@ -54,14 +54,14 @@ function tab(key, label) {
 function renderIngredient(item) {
   const emoji = item.category === '水果' ? '🍌' : item.category === '蔬菜' ? '🥬' : item.category === '肉类' ? '🥩' : item.category === '蛋奶' ? '🥛' : '🍽️';
   return `
-    <article class="ingredient-card card">
+    <article class="ingredient-card card" data-open-ingredient="${item.id}">
       <div class="food-avatar">${emoji}</div>
       <div>
         <div class="ingredient-title">
           <h3>${item.name}</h3>
           <span class="badge ${statusClass(item.status)}">${item.status}</span>
         </div>
-        <p>${item.qty}${item.unit} · ${item.category} · ${item.days}天后到期</p>
+        <p>${item.qty}${item.unit} · ${item.category} · ${item.days >= 0 ? item.days + '天后到期' : Math.abs(item.days) + '天前过期'}</p>
         <div class="lifecycle">${lifecycleSteps(item)}</div>
       </div>
     </article>
@@ -273,6 +273,12 @@ function renderRecipes() {
  */
 function renderLibrary() {
   const waste = wastePredictions();
+  const filtered = searchIngredients({
+    keyword: state.libraryKeyword,
+    status: state.libraryFilter,
+    category: state.libraryCategory
+  });
+  
   return `
     <main class="page">
       <div class="page-header">
@@ -281,6 +287,24 @@ function renderLibrary() {
           <h1>我的食材库</h1>
         </div>
       </div>
+      
+      <!-- 工具栏：搜索 + 添加 -->
+      <div class="library-toolbar">
+        <input class="library-search" data-input="library-search" placeholder="🔍 搜索食材名称..." value="${state.libraryKeyword}">
+        <button class="primary" data-action="add-ingredient">+ 添加食材</button>
+      </div>
+      
+      <!-- 筛选条 -->
+      <div class="filter-chips">
+        ${['全部', '新鲜', '临期', '今日到期', '已过期'].map(s => 
+          `<button class="chip ${state.libraryFilter === s ? 'active' : ''}" data-filter-status="${s}">${s}</button>`
+        ).join('')}
+        <select class="category-select" data-filter-category>
+          <option value="">全部分类</option>
+          ${CATEGORIES.map(c => `<option value="${c}" ${state.libraryCategory === c ? 'selected' : ''}>${c}</option>`).join('')}
+        </select>
+      </div>
+      
       <section class="card card-section">
         <div class="section-title">
           <h2>食材浪费预测</h2>
@@ -288,6 +312,7 @@ function renderLibrary() {
         </div>
         ${waste.map((item) => `<p class="waste-line">${item.name} 浪费风险 ${item.wasteRisk}%：建议下次少买或提前安排菜谱。</p>`).join('')}
       </section>
+      
       <section class="card card-section">
         <div class="section-title">
           <h2>📊 冰箱健康周报</h2>
@@ -302,10 +327,12 @@ function renderLibrary() {
         </div>
         <canvas class="chart-canvas" id="fridge-radar" width="300" height="240"></canvas>
       </section>
+      
       <section class="stack">
-        ${ingredients().map(renderIngredient).join('')}
+        ${filtered.length ? filtered.map(renderIngredient).join('') : '<div class="empty-hint">暂无匹配食材，试试修改筛选条件或添加新食材</div>'}
       </section>
     </main>
+    ${renderModal()}
   `;
 }
 
@@ -562,6 +589,111 @@ function renderCare() {
 }
 
 /**
+ * 渲染食材表单
+ * @param {object|null} ingredient 要编辑的食材，null 表示新建
+ * @returns {string} HTML 字符串
+ */
+function renderIngredientForm(ingredient) {
+  const isEdit = !!ingredient;
+  const today = new Date().toISOString().split('T')[0];
+  return `
+    <div class="modal-mask" data-action="close-modal">
+      <div class="modal ingredient-form" onclick="event.stopPropagation()">
+        <h2>${isEdit ? '编辑食材' : '添加食材'}</h2>
+        <label>
+          名称
+          <input data-ingredient-field="name" value="${isEdit ? ingredient.name : ''}" placeholder="如 鸡胸肉" ${isEdit ? 'readonly' : ''}>
+        </label>
+        <label>
+          类别
+          <select data-ingredient-field="category" ${isEdit ? 'disabled' : ''}>
+            <option value="">请选择</option>
+            ${CATEGORIES.map(c => `<option value="${c}" ${isEdit && ingredient.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+          </select>
+        </label>
+        <div class="form-row">
+          <label>
+            数量
+            <input data-ingredient-field="qty" type="number" min="1" value="${isEdit ? ingredient.qty : '1'}" placeholder="1">
+          </label>
+          <label>
+            单位
+            <select data-ingredient-field="unit">
+              ${UNIT_OPTIONS.map(u => `<option value="${u}" ${isEdit && ingredient.unit === u ? 'selected' : ''}>${u}</option>`).join('')}
+            </select>
+          </label>
+        </div>
+        <label>
+          保质期（天）
+          <input data-ingredient-field="shelfLife" type="number" min="1" value="${isEdit ? ingredient.shelfLife || 7 : ''}" placeholder="如 7">
+        </label>
+        <label>
+          购入日期
+          <input data-ingredient-field="purchaseDate" type="date" value="${isEdit ? ingredient.purchaseDate || today : today}">
+        </label>
+        <div class="modal-actions">
+          <button class="primary" data-action="save-ingredient">${isEdit ? '保存修改' : '添加食材'}</button>
+          <button class="secondary" data-action="close-modal">取消</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * 渲染食材详情
+ * @param {object} ingredient
+ * @returns {string} HTML 字符串
+ */
+function renderIngredientDetail(ingredient) {
+  return `
+    <div class="modal-mask" data-action="close-modal">
+      <div class="modal ingredient-detail" onclick="event.stopPropagation()">
+        <div class="modal-header">
+          <h2>${ingredient.name}</h2>
+          <span class="badge ${statusClass(ingredient.status)}">${ingredient.status}</span>
+        </div>
+        <div class="detail-grid">
+          <div><span class="muted">类别</span><strong>${ingredient.category}</strong></div>
+          <div><span class="muted">数量</span><strong>${ingredient.qty}${ingredient.unit}</strong></div>
+          <div><span class="muted">购入日期</span><strong>${ingredient.purchaseDate || '未知'}</strong></div>
+          <div><span class="muted">保质期</span><strong>${ingredient.shelfLife || '未知'} 天</strong></div>
+          <div><span class="muted">剩余天数</span><strong style="color:${ingredient.days < 0 ? '#bd3028' : ingredient.days <= 3 ? '#a96600' : '#17794a'}">${ingredient.days >= 0 ? ingredient.days + ' 天' : '已过期 ' + Math.abs(ingredient.days) + ' 天'}</strong></div>
+          <div><span class="muted">浪费风险</span><strong>${ingredient.wasteRisk || '-'}%</strong></div>
+        </div>
+        <div class="lifecycle">${lifecycleSteps(ingredient)}</div>
+        <div class="modal-actions">
+          <button class="primary" data-action="edit-ingredient">编辑</button>
+          <button class="ghost" data-action="consume-ingredient">标记已消耗</button>
+          <button class="secondary danger-btn" data-action="delete-ingredient">删除</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * 渲染模态框
+ * @returns {string} HTML 字符串
+ */
+function renderModal() {
+  if (!state.showIngredientModal) return '';
+  if (state.editingIngredientId !== null) {
+    const ingredient = getIngredientById(state.editingIngredientId);
+    if (!ingredient) return '';
+    return renderIngredientForm(ingredient);
+  }
+  if (state.modalIngredientId) {
+    const ingredient = getIngredientById(state.modalIngredientId);
+    if (!ingredient) return '';
+    const detailMode = state.modalIngredientId && state.editingIngredientId === null;
+    return renderIngredientDetail(ingredient);
+  }
+  // New ingredient form
+  return renderIngredientForm(null);
+}
+
+/**
  * 渲染整个应用
  */
 function render() {
@@ -758,6 +890,132 @@ function bindEvents() {
     }
     // 重置 input 以允许重复选择同一文件
     event.target.value = '';
+  });
+
+  // ===== 食材录入/编辑/消耗/删除 =====
+  // Event delegation for ingredient card clicks, filter button clicks, modal actions
+  document.querySelector('#app')?.addEventListener('click', (e) => {
+    const target = e.target.closest('[data-open-ingredient]');
+    if (target) {
+      state.modalIngredientId = target.dataset.openIngredient;
+      state.showIngredientModal = true;
+      state.editingIngredientId = null;
+      render();
+      return;
+    }
+    
+    const addBtn = e.target.closest('[data-action="add-ingredient"]');
+    if (addBtn) {
+      state.showIngredientModal = true;
+      state.modalIngredientId = null;
+      state.editingIngredientId = null;
+      render();
+      return;
+    }
+    
+    const closeBtn = e.target.closest('[data-action="close-modal"]');
+    if (closeBtn) {
+      state.showIngredientModal = false;
+      state.modalIngredientId = null;
+      state.editingIngredientId = null;
+      render();
+      return;
+    }
+    
+    // Save ingredient (add or update)
+    const saveBtn = e.target.closest('[data-action="save-ingredient"]');
+    if (saveBtn) {
+      const name = document.querySelector('[data-ingredient-field="name"]')?.value.trim();
+      const category = document.querySelector('[data-ingredient-field="category"]')?.value;
+      const qty = Number(document.querySelector('[data-ingredient-field="qty"]')?.value);
+      const unit = document.querySelector('[data-ingredient-field="unit"]')?.value || '个';
+      const shelfLife = Number(document.querySelector('[data-ingredient-field="shelfLife"]')?.value);
+      const purchaseDate = document.querySelector('[data-ingredient-field="purchaseDate"]')?.value;
+      
+      if (state.editingIngredientId) {
+        // Update existing
+        const result = updateIngredient(state.editingIngredientId, { qty, unit, shelfLife, purchaseDate });
+        if (!result.ok) { showToast(result.error, 'error'); return; }
+        showToast('食材已更新', 'success');
+      } else {
+        // Add new
+        const result = addIngredient({ name, category, qty, unit, shelfLife, purchaseDate });
+        if (!result.ok) { showToast(result.error, 'error'); return; }
+        showToast(`已添加 ${result.ingredient.name}`, 'success');
+      }
+      
+      state.showIngredientModal = false;
+      state.editingIngredientId = null;
+      state.modalIngredientId = null;
+      render();
+      return;
+    }
+    
+    // Edit (switch from detail view to edit form)
+    const editBtn = e.target.closest('[data-action="edit-ingredient"]');
+    if (editBtn) {
+      if (state.modalIngredientId) {
+        state.editingIngredientId = state.modalIngredientId;
+        render();
+      }
+      return;
+    }
+    
+    // Consume
+    const consumeBtn = e.target.closest('[data-action="consume-ingredient"]');
+    if (consumeBtn) {
+      const id = state.modalIngredientId;
+      if (id) {
+        const result = markConsumed(id);
+        if (!result.ok) { showToast(result.error, 'error'); return; }
+        showToast(`已消耗，节省 ${result.saved} g CO₂ 🎉`, 'success');
+        state.showIngredientModal = false;
+        state.modalIngredientId = null;
+        render();
+      }
+      return;
+    }
+    
+    // Delete
+    const deleteBtn = e.target.closest('[data-action="delete-ingredient"]');
+    if (deleteBtn) {
+      if (confirm('确定删除该食材吗？')) {
+        const id = state.modalIngredientId;
+        deleteIngredient(id);
+        showToast('食材已删除', 'info');
+        state.showIngredientModal = false;
+        state.modalIngredientId = null;
+        render();
+      }
+      return;
+    }
+    
+    // Status filter chips
+    const filterBtn = e.target.closest('[data-filter-status]');
+    if (filterBtn) {
+      state.libraryFilter = filterBtn.dataset.filterStatus;
+      render();
+      return;
+    }
+  });
+
+  // Search input with debounce
+  const searchInput = document.querySelector('[data-input="library-search"]');
+  if (searchInput) {
+    let searchTimer;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchTimer);
+      searchTimer = setTimeout(() => {
+        state.libraryKeyword = searchInput.value.trim();
+        render();
+      }, 300);
+    });
+  }
+
+  // Category filter
+  document.querySelector('[data-filter-category]')?.addEventListener('change', (e) => {
+    state.libraryCategory = e.target.value;
+    render();
   });
 }
 
