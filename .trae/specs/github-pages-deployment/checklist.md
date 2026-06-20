@@ -1,0 +1,5 @@
+- [ ] gh CLI 已安装并可执行
+- [ ] gh 认证状态正常，可操作 SaulShen/foodkeeper-h5-mvp 仓库
+- [ ] main 分支包含最新代码（碳足迹厨房、PWA 等全部功能）
+- [ ] GitHub Pages 已启用，配置为从 main 分支 `/` 部署
+- [ ] 页面可公开访问，返回 HTTP 200

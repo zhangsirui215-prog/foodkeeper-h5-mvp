@@ -1,0 +1,16 @@
+- [x] `CATEGORIES` / `UNIT_OPTIONS` 常量已定义在 `js/data/index.js`
+- [x] `calcRemainingDays` / `calcStatus` 纯函数实现并通过状态计算规则验证（已过期/今日到期/临期/新鲜）
+- [x] `addIngredient` 必填校验、查重、初始状态自动计算正常
+- [x] `updateIngredient` 字段合并与状态重算正常
+- [x] `deleteIngredient` / `getIngredientById` 可用
+- [x] `markConsumed` 触发碳足迹记录并从库移除
+- [x] `searchIngredients` 支持 keyword/status/category 组合筛选
+- [x] `renderLibrary` 含"添加食材"入口、筛选条、搜索框
+- [x] `renderIngredientForm` 与 `renderIngredientDetail` 渲染正常
+- [x] 状态/编辑/删除/消耗/筛选/搜索事件均已绑定并触发
+- [x] 表单空字段、重复名称、数量≤0、保质期≤0 异常路径被 Toast 阻止
+- [x] 数据持久化：刷新后食材仍存在
+- [x] 碳足迹联动：消耗后首页数值更新且徽章可解锁
+- [x] CSS 样式：录入表单、详情模态、筛选条符合现有视觉规范且移动端可用
+- [x] `README.md` 已补充"食材录入与管理"章节
+- [x] 代码已提交并推送到 main 分支
