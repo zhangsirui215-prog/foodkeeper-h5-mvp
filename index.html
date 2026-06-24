@@ -1,14 +1,34 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#29a36a" />
-    <title>AI食材管家 H5 MVP</title>
-    <link rel="stylesheet" href="./health-demo.css" />
+    <link rel="icon" href="./icons/icon-192.svg" type="image/svg+xml" />
+    <title>AI 食材管家 H5 MVP - Live</title>
+    <link rel="stylesheet" href="./health-demo.css?v=20260624-live6" />
   </head>
   <body>
     <div id="app"></div>
-    <script src="./health-demo.js"></script>
+    <script>
+      window.FOODKEEPER_LIVE_VERSION = '20260624-live6';
+      Promise.all([
+        'serviceWorker' in navigator
+          ? navigator.serviceWorker.getRegistrations().then(function(registrations) {
+              return Promise.all(registrations.map(function(registration) { return registration.unregister(); }));
+            })
+          : Promise.resolve(),
+        'caches' in window
+          ? caches.keys().then(function(keys) {
+              return Promise.all(keys.map(function(key) { return caches.delete(key); }));
+            })
+          : Promise.resolve()
+      ]).finally(function() {
+        var script = document.createElement('script');
+        script.type = 'module';
+        script.src = './js/app.js?v=20260624-live6';
+        document.body.appendChild(script);
+      });
+    </script>
   </body>
 </html>
